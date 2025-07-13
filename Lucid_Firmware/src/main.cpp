@@ -152,13 +152,17 @@ void loop() {
 
     getRTCAsTime(&rtc, &currentTime);
 
-    addMinutes(&currentTime, lround(random(60, 120)  * CORRECTION_FACTOR));
-    // addSeconds(&currentTime, 4);
+    // addMinutes(&currentTime, lround(random(60, 120)  * CORRECTION_FACTOR));
+    addSeconds(&currentTime, 4);
 
     rtc.setAlarmTime(currentTime.hour, currentTime.minute, currentTime.second);
     // rtc.setAlarmDate(currentTime.day, currentTime.month, currentTime.year);
     rtc.enableAlarm(RTCZero::MATCH_HHMMSS);
     rtc.attachInterrupt(remind);
+
+    if (!shouldRemind) {
+        goToSleep();
+    }
 
     if (shouldRemind) {
         digitalWrite(0, 1);
@@ -178,6 +182,4 @@ void loop() {
         rtc.disableAlarm();
         rtc.detachInterrupt();
     }
-
-    goToSleep();
 }
