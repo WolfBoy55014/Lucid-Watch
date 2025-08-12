@@ -152,7 +152,7 @@ void loop() {
 
     getRTCAsTime(&rtc, &currentTime);
 
-    addMinutes(&currentTime, lround(random(60, 120)  * CORRECTION_FACTOR));
+    addMinutes(&currentTime, lround(random(15, 60)  * CORRECTION_FACTOR));
     // addSeconds(&currentTime, 4);
 
     rtc.setAlarmTime(currentTime.hour, currentTime.minute, currentTime.second);
