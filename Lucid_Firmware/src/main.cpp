@@ -2,7 +2,6 @@
 #include <RTCZero.h>
 #include <RealTime.h>
 #include <Wire.h>
-#include <LowPower.h>
 
 #define DELAY(value) delay(value / 6)
 
@@ -152,7 +151,7 @@ void loop() {
 
     getRTCAsTime(&rtc, &currentTime);
 
-    addMinutes(&currentTime, lround(random(15, 60)  * CORRECTION_FACTOR));
+    addMinutes(&currentTime, lround(random(5, 30)  * CORRECTION_FACTOR));
     // addSeconds(&currentTime, 4);
 
     rtc.setAlarmTime(currentTime.hour, currentTime.minute, currentTime.second);
