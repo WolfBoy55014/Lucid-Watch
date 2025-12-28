@@ -2,10 +2,21 @@
 #include <RTCZero.h>
 #include <RealTime.h>
 #include <Wire.h>
+#include <Adafruit_FreeTouch.h>
 
 #define DELAY(value) delay(value / 6)
 
+#define WBTB_TIMER
+#define POLL_TIME 5 // only used when WBTB_TIMER is defined (in seconds)
+#define TOUCH_THRESH_HOLD 600
+
+// #define TESTING_THRESH_HOLD // define to run thresh hold testing loop
+                            // must have WBTB_TIMER defined also
+
 RTCZero rtc;
+#ifdef WBTB_TIMER
+Adafruit_FreeTouch qt = Adafruit_FreeTouch(A2, OVERSAMPLE_4, RESISTOR_50K, FREQ_MODE_NONE);
+#endif
 
 void i2cReceiveTime(int numBytes) {
     if (numBytes >= 6) {
@@ -117,12 +128,69 @@ void goToSleep() {
 }
 
 bool shouldRemind = false;
+#ifdef WBTB_TIMER
+bool hasReminded = false;
 
-void remind() {
-    shouldRemind = true;
-}
+bool wasTouched = false;
+bool timerRunning = false;
+bool timerUp = false;
+
+Time remindTime;
+Time timerTime;
+#endif
 
 Time currentTime;
+
+void interrupt() {
+#ifdef WBTB_TIMER
+
+    getRTCAsTime(&rtc, &currentTime);
+    if (!timerRunning) { // don't do this while timer is running
+        // maintain normal reminder functionality
+        if (remindTime.hour == currentTime.hour && remindTime.minute == currentTime.minute) {
+            // it's the right time, but have we reminded already this minute?
+            if (!hasReminded) {
+                // we haven't yet, so we will
+                shouldRemind = true;
+                hasReminded = true;
+            }
+        } else {
+            // reset
+            shouldRemind = false;
+            hasReminded = false;
+        }
+    }
+
+    if (timerRunning) {
+        // time is up
+        if (timerTime.hour == currentTime.hour && timerTime.minute == currentTime.minute) {
+            timerRunning = false;
+            timerUp = true;
+        }
+    }
+
+    if (qt.measure() > TOUCH_THRESH_HOLD) {
+        if (timerUp) {
+            timerUp = false; // acknowledge alarm
+            wasTouched = true;
+        } else {
+            addMinutes(&currentTime, 65 * 4);
+
+            timerTime.hour = currentTime.hour;
+            timerTime.minute = currentTime.minute;
+            timerRunning = true;
+
+            wasTouched = true;
+        }
+    }
+
+    rtc.disableAlarm();
+    rtc.detachInterrupt();
+
+#else
+    shouldRemind = true;
+#endif
+}
 
 void setup() {
     Serial.begin(9600);
@@ -134,6 +202,10 @@ void setup() {
     DELAY(2000);
 
     rtc.begin(); // initialize RTC
+
+#ifdef WBTB_TIMER
+    qt.begin();
+#endif
 
     currentTime.year = 2025;
     currentTime.month = 7;
@@ -148,20 +220,75 @@ void setup() {
 }
 
 void loop() {
+#ifdef TESTING_THRESH_HOLD
+    Serial.println(qt.measure());
+
+    if (qt.measure() > TOUCH_THRESH_HOLD) {
+        digitalWrite(0, 1);
+    } else {
+        digitalWrite(0, 0);
+    }
+
+    return;
+#endif
 
     getRTCAsTime(&rtc, &currentTime);
 
-    addMinutes(&currentTime, lround(random(5, 30)  * CORRECTION_FACTOR));
-    // addSeconds(&currentTime, 4);
+#ifdef WBTB_TIMER
+    addSeconds(&currentTime, POLL_TIME);
+#else
+    addMinutes(&currentTime, lround(random(5, 30) * CORRECTION_FACTOR));
+#endif
 
     rtc.setAlarmTime(currentTime.hour, currentTime.minute, currentTime.second);
     // rtc.setAlarmDate(currentTime.day, currentTime.month, currentTime.year);
     rtc.enableAlarm(RTCZero::MATCH_HHMMSS);
-    rtc.attachInterrupt(remind);
+    rtc.attachInterrupt(interrupt);
 
-    if (!shouldRemind) {
+#ifdef WBTB_TIMER
+    getRTCAsTime(&rtc, &currentTime);
+    addMinutes(&currentTime, lround(random(5, 30) * CORRECTION_FACTOR));
+    remindTime.hour = currentTime.hour;
+    remindTime.minute = currentTime.minute;
+#endif
+
+    if (!shouldRemind
+#ifdef WBTB_TIMER
+        || !wasTouched
+        || !timerUp
+#endif
+        ) {
         goToSleep();
     }
+
+#ifdef WBTB_TIMER
+    if (wasTouched) {
+        digitalWrite(0, 1);
+        DELAY(70);
+        digitalWrite(0, 0);
+        DELAY(180);
+        digitalWrite(0, 1);
+        DELAY(70);
+        digitalWrite(0, 0);
+
+        wasTouched = false;
+    }
+
+    if (timerUp) {
+        digitalWrite(0, 1);
+        DELAY(1000);
+        digitalWrite(0, 0);
+        DELAY(500);
+        digitalWrite(0, 1);
+        DELAY(1000);
+        digitalWrite(0, 0);
+        DELAY(500);
+        digitalWrite(0, 1);
+        DELAY(1000);
+        digitalWrite(0, 0);
+        DELAY(500);
+    }
+#endif
 
     if (shouldRemind) {
         digitalWrite(0, 1);
@@ -177,8 +304,9 @@ void loop() {
         digitalWrite(0, 0);
 
         shouldRemind = false;
-
+#ifndef WBTB_TIMER
         rtc.disableAlarm();
         rtc.detachInterrupt();
+#endif
     }
 }
